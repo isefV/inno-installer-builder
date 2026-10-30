@@ -13,46 +13,7 @@
 
     Requires Inno Setup 6.3 or newer:  winget install JRSoftware.InnoSetup
 
-.PARAMETER SourceDir
-    Folder holding the built app. Everything inside it is packaged, including subfolders.
-.PARAMETER AppName
-    Display name. Default: the exe's ProductName, then the exe's file name.
-.PARAMETER AppVersion
-    Version text, such as 1.2.3 or 1.2.3-beta. Default: the exe's ProductVersion, then FileVersion.
-.PARAMETER ExeName
-    Main exe, relative to SourceDir, such as MyApp.exe or bin\MyApp.exe. Default: detected.
-.PARAMETER Publisher
-    Company or author name shown in Windows "Installed apps".
-.PARAMETER AppUrl
-    Website shown in Windows "Installed apps".
-.PARAMETER AppId
-    Fixed install identity. Default: a stable GUID derived from Publisher and AppName.
-.PARAMETER OutputDir
-    Where Setup.exe and the .iss go. Default: .\installers. Must be outside SourceDir.
-.PARAMETER OutputName
-    Setup file name without extension. Default: <AppName>-<AppVersion>-setup.
-.PARAMETER IconFile
-    .ico file for Setup.exe itself. The installed shortcuts use the exe's own icon.
-.PARAMETER LicenseFile
-    .txt or .rtf file the user must accept during setup.
-.PARAMETER InstallScope
-    User (no admin prompt), Machine (Program Files, admin) or Ask (the user chooses).
-.PARAMETER Architecture
-    Auto reads it from the exe's header. Or x64, x86, arm64.
-.PARAMETER DesktopIcon
-    Tick the "Create a desktop shortcut" option by default.
-.PARAMETER StartupOption
-    Offer an unticked "Start with Windows" option.
-.PARAMETER NoRunAfterInstall
-    Do not offer to launch the app on the final page.
-.PARAMETER Exclude
-    File patterns to leave out. Default: *.pdb
-.PARAMETER ExtraIss
-    Text file of raw Inno Setup sections to append, such as [Registry] entries.
-.PARAMETER IsccPath
-    Full path to ISCC.exe. Default: searched on PATH, in the registry and in Program Files.
-.PARAMETER ScriptOnly
-    Write the .iss and stop, without compiling.
+    Run with -h to list every option. Options are described in Show-Help below.
 
 .EXAMPLE
     .\build-installer.ps1 -SourceDir .\dist\MyApp
@@ -60,11 +21,14 @@
     Detects everything from the exe.
 
 .EXAMPLE
-    .\build-installer.ps1 -SourceDir .\dist\MyApp -AppName "My App" -AppVersion 2.1.0 -Publisher "Acme" -InstallScope Ask -IconFile .\app.ico -DesktopIcon
+    .\build-installer.ps1 -h
+
+    Lists every option with examples.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)][string]$SourceDir,
+    [Parameter(Position = 0)][string]$SourceDir,
+    [Alias('h')][switch]$Help,
     [string]$AppName,
     [string]$AppVersion,
     [string]$ExeName,
@@ -88,6 +52,77 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Show-Help {
+    Write-Host @'
+build-installer.ps1
+Build a Windows installer (Setup.exe) from any folder that contains an .exe app.
+Needs Inno Setup 6.3 or newer: winget install JRSoftware.InnoSetup
+
+USAGE
+  .\build-installer.ps1 -SourceDir <folder> [options]
+  .\build-installer.ps1 -h
+
+REQUIRED
+  -SourceDir <folder>     Folder to package, including subfolders.
+
+APP DETAILS (read from the exe when not set)
+  -AppName <text>         Name shown to users.
+  -AppVersion <text>      Version, such as 1.2.3 or 1.2.3-beta.
+  -ExeName <path>         Main exe, relative to SourceDir, such as bin\MyApp.exe.
+  -Publisher <text>       Company or author shown in Windows Installed apps.
+  -Architecture <value>   Auto (default), x64, x86 or arm64.
+
+  -AppUrl <url>           Website shown in Windows Installed apps.
+  -AppId <text>           Fixed install identity. By default it is generated from
+                          the publisher and name, so new versions upgrade old ones.
+
+INSTALLER OPTIONS
+  -InstallScope <value>   User (default): no admin prompt.
+                          Machine: Program Files, needs admin.
+                          Ask: the user chooses when setup starts.
+  -IconFile <file>        Icon (.ico) for the installer itself.
+  -LicenseFile <file>     License (.txt or .rtf) the user must accept.
+  -DesktopIcon            Tick the desktop shortcut option by default.
+  -StartupOption          Offer an unticked "Start with Windows" option.
+  -NoRunAfterInstall      Do not offer to launch the app when setup finishes.
+  -Exclude <patterns>     Files to leave out, comma separated. Default: *.pdb
+  -ExtraIss <file>        Inno Setup sections to append, such as [Registry] entries.
+
+OUTPUT AND TOOLS
+  -OutputDir <folder>     Where the installer goes. Default: .\installers
+  -OutputName <name>      Installer file name, no extension.
+                          Default: <AppName>-<AppVersion>-setup
+  -ScriptOnly             Write the .iss script and stop, without compiling.
+  -IsccPath <file>        Full path to ISCC.exe, if it is not found automatically.
+  -h, -Help               Show this help.
+
+EXAMPLES
+  Detect everything from the exe:
+    .\build-installer.ps1 -SourceDir .\dist\MyApp
+
+  Set the details and let the user choose the install type:
+    .\build-installer.ps1 -SourceDir .\dist\MyApp -AppName "My App" -AppVersion 2.1.0 -Publisher "Acme" -InstallScope Ask
+
+  Pick the main exe when the folder has several:
+    .\build-installer.ps1 -SourceDir .\dist\MyApp -ExeName bin\MyApp.exe
+
+  Generate the .iss script to review or edit:
+    .\build-installer.ps1 -SourceDir .\dist\MyApp -ScriptOnly
+'@
+}
+
+# PowerShell passes --help and /? through as plain arguments, so they arrive in SourceDir.
+if ($Help -or $SourceDir -in '--help', '--h', '/?', '/h', '/help') {
+    Show-Help
+    return
+}
+if (-not $SourceDir) {
+    Show-Help
+    Write-Host ''
+    Write-Host 'Missing -SourceDir: tell the script which folder to package.'
+    exit 1
+}
 
 function Resolve-InputFile([string]$Path, [string]$ArgName) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -344,7 +379,8 @@ if ($ScriptOnly) { return }
 $iscc = Find-Iscc $IsccPath
 Write-Host "Compiler:     $iscc"
 
-& $iscc '/Qp' $issPath
+# Out-Host keeps compiler output off the pipeline, so callers receive only the installer's path.
+& $iscc '/Qp' $issPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "ISCC failed with exit code $LASTEXITCODE. The script it compiled is $issPath`nIf it reports an unknown architecture, Inno Setup is older than 6.3. Update with: winget upgrade JRSoftware.InnoSetup"
 }

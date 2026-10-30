@@ -23,6 +23,12 @@ The script finds Inno Setup through `PATH`, the Windows registry and the usual i
 
 The installer and the generated `.iss` script appear in `.\installers`.
 
+To list every option with examples:
+
+```powershell
+.\build-installer.ps1 -h
+```
+
 If PowerShell blocks the script, allow it for a single run:
 
 ```powershell
@@ -89,8 +95,7 @@ Only `-SourceDir` is required.
 | `-ExtraIss` | None | Text file of Inno Setup sections to append. See [Custom setup steps](#custom-setup-steps). |
 | `-IsccPath` | Detected | Full path to `ISCC.exe`. |
 | `-ScriptOnly` | Off | Writes the `.iss` and stops without compiling. |
-
-Run `Get-Help .\build-installer.ps1 -Detailed` to see this help in the terminal.
+| `-h`, `-Help` | Off | Shows the options and examples, then exits. `--help` works too. |
 
 ## How the main exe is chosen
 
